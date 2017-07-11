@@ -34,6 +34,8 @@ class procdata(object):
                 if e.isdigit() and not iskernel(self, e)]
     def mapdata(self, pid):
         return self._readlines('%s/smaps' % pid)
+    def status(self, pid):
+        return self._readlines('%s/status' % pid)
     def memdata(self):
         if self._memdata is None:
             self._memdata = self._readlines('meminfo')
@@ -657,6 +659,28 @@ def showbar(l, columns, sort):
     pylab.legend([p[0] for p in pl], key)
     pylab.show()
 
+class Options(object):
+    pass
+    
+def set_options(new_options):
+    """Update options when it is called as a library."""
+
+    global options
+    options = Options()
+    options.processfilter = None
+    options.userfilter = None
+    options.mapfilter = None
+    options.pie = None
+    options.bar = None
+    options.realmem = None
+    options.autosize = None
+    options.reverse = None
+    options.no_header = None
+    options.abbreviate = None
+    options.percent = None
+    options.totals = None
+    options.__dict__.update(new_options)
+    
 def main():
 
     parser = optparse.OptionParser("%prog [options]")

@@ -10,22 +10,89 @@
 
 import smem.smem
 import pprint
+from collections import defaultdict
+import sys
 
-class Options(object):
-    pass
+def get_pid_to_ppid(proc):
+    pid_to_ppid = {}
+    pids = proc.pids()
+    for pid in pids:
+        status = proc.status(pid)
+        parent = ''
+        for line in status:
+            field = line.split()
+            if field[0] == "PPid:":
+                parent = int(field[1])
+                break
+        pid_to_ppid[pid] = parent
+    return pid_to_ppid
+
+def get_ppid_to_pids(proc):
+    ppid_to_pids = defaultdict(list)
+    for pid, parent in get_pid_to_ppid(proc).iteritems():
+        ppid_to_pids[parent].append(pid)
+    ## pprint.pprint(dict(ppid_to_pids))
+    return ppid_to_pids
+
+def get_subpids(ppid_to_pids, pid):
+    """Return a list of the pid and all the descendants"""
+    subpids = [pid]
+    for child in ppid_to_pids[pid]:
+        subpids.extend(get_subpids(ppid_to_pids, child))
+    return subpids
+
+def multimem(proc, pid):
+    ppid_to_pids = get_ppid_to_pids(proc)
+    subpids = get_subpids(ppid_to_pids, pid)
+
+    pids = proc.pids()
+    smem.smem.set_options({"processfilter": "emacs"})
+
+    alltotals = {}
+    for pid in subpids:
+        totals = smem.smem.pidtotals(proc, pid)
+        for key, value in totals.iteritems():
+            alltotals[key] = value + alltotals.get(key, 0)
+    ## pprint.pprint(alltotals)
+    return alltotals
+
+def show_multimem(proc, pid):
+    alltotals = multimem(proc, pid)
+    pt = {pid: alltotals}
+    fields = dict(
+        pid=('PID', lambda n: n, '% 5s', lambda x: len(pt),
+             'process ID'),
+#        user=('User', showuser, '%-8s', lambda x: len(dict.fromkeys(x)),
+#              'owner of process'),
+        name=('Name', proc.pidname, '%-24.24s', None,
+              'name of process'),
+        command=('Command', proc.pidcmd, '%-27.27s', None,
+                 'process command line'),
+        maps=('Maps',lambda n: pt[n]['maps'], '% 5s', sum,
+              'total number of mappings'),
+        swap=('Swap',lambda n: pt[n]['swap'], '% 8a', sum,
+              'amount of swap space consumed (ignoring sharing)'),
+        uss=('USS', lambda n: pt[n]['uss'], '% 8a', sum,
+             'unique set size'),
+        rss=('RSS', lambda n: pt[n]['rss'], '% 8a', sum,
+             'resident set size (ignoring sharing)'),
+        pss=('PSS', lambda n: pt[n]['pss'], '% 8a', sum,
+             'proportional set size (including sharing)'),
+        vss=('VSS', lambda n: pt[n]['size'], '% 8a', sum,
+             'virtual set size (total virtual memory mapped)'),
+    )
+    columns = 'pid command swap uss pss rss'
+
+    smem.smem.showtable(proc, [pid], fields, columns.split(), 'pss')
+
 
 def main():
-    print("ps:")
-    src = smem.smem.procdata("")
-    pids = src.pids()
-    print(pids)
-    smem.smem.options = Options()
-    smem.smem.options.processfilter = None
-    smem.smem.options.userfilter = None
-    smem.smem.options.mapfilter = None
-    pt = smem.smem.processtotals(src, pids)
-    pprint.pprint(pt)
+    if len(sys.argv) != 2:
+        print("Usage: multimem pid")
+        sys.exit(1)
+    pid = int(sys.argv[1])
+    proc = smem.smem.procdata("")
+    show_multimem(proc, pid)
     
-
 if __name__ == "__main__":
     main()
