@@ -11,6 +11,7 @@
 import re, os, sys, pwd, optparse, errno, tarfile
 
 warned = False
+options = {}
 
 class procdata(object):
     def __init__(self, source):
@@ -30,7 +31,7 @@ class procdata(object):
     def pids(self):
         '''get a list of processes'''
         return [int(e) for e in self._list()
-                if e.isdigit() and not iskernel(e)]
+                if e.isdigit() and not iskernel(self, e)]
     def mapdata(self, pid):
         return self._readlines('%s/smaps' % pid)
     def memdata(self):
@@ -109,13 +110,13 @@ class tardata(procdata):
         return self._gcache.get(g, str(g))
 
 _totalmem = 0
-def totalmem():
+def totalmem(src):
     global _totalmem
     if not _totalmem:
         if options.realmem:
             _totalmem = fromunits(options.realmem) / 1024
         else:
-            _totalmem = memory()['memtotal']
+            _totalmem = memory(src)['memtotal']
     return _totalmem
 
 _kernelsize = 0
@@ -138,7 +139,7 @@ def kernelsize():
             sys.stderr.write("Parameter '%s' should be an original uncompressed compiled kernel file.\n\n" % options.kernel)
     return _kernelsize
 
-def pidmaps(pid):
+def pidmaps(src, pid):
     global warned
     maps = {}
     start = None
@@ -183,10 +184,10 @@ def sortmaps(totals, key):
     l.sort()
     return [pid for pid,key in l]
 
-def iskernel(pid):
+def iskernel(src, pid):
     return src.pidcmd(pid) == ""
 
-def memory():
+def memory(src):
     t = {}
     f = re.compile('(\\S+):\\s+(\\d+) kB')
     for l in src.memdata():
@@ -215,7 +216,7 @@ def fromunits(x):
     sys.stderr.write("Memory size should be written with units, for example 1024M\n")
     sys.exit(-1)
 
-def pidusername(pid):
+def pidusername(src, pid):
     return src.username(src.piduser(pid))
 
 def showamount(a, total):
@@ -236,8 +237,8 @@ def filters(opt, arg, *sources):
             return False
     return True
 
-def pidtotals(pid):
-    maps = pidmaps(pid)
+def pidtotals(src, pid):
+    maps = pidmaps(src, pid)
     t = dict(size=0, rss=0, pss=0, shared_clean=0, shared_dirty=0,
              private_clean=0, private_dirty=0, referenced=0, swap=0)
     for m in maps:
@@ -249,28 +250,28 @@ def pidtotals(pid):
 
     return t
 
-def processtotals(pids):
+def processtotals(src, pids):
     totals = {}
     for pid in pids:
         if (filters(options.processfilter, pid, src.pidname, src.pidcmd) or
                 filters(options.userfilter, pid, pidusername)):
             continue
         try:
-            p = pidtotals(pid)
+            p = pidtotals(src, pid)
             if p['maps'] != 0:
                 totals[pid] = p
-        except:
+        except IOError:
             continue
     return totals
 
-def showpids():
+def showpids(src):
     p = src.pids()
-    pt = processtotals(p)
+    pt = processtotals(src, p)
 
     def showuser(p):
         if options.numeric:
             return src.piduser(p)
-        return pidusername(p)
+        return pidusername(src, p)
 
     fields = dict(
         pid=('PID', lambda n: n, '% 5s', lambda x: len(pt),
@@ -296,16 +297,16 @@ def showpids():
         )
     columns = options.columns or 'pid user command swap uss pss rss'
 
-    showtable(pt.keys(), fields, columns.split(), options.sort or 'pss')
+    showtable(src, pt.keys(), fields, columns.split(), options.sort or 'pss')
 
-def maptotals(pids):
+def maptotals(src, pids):
     totals = {}
     for pid in pids:
         if (filters(options.processfilter, pid, src.pidname, src.pidcmd) or
                 filters(options.userfilter, pid, pidusername)):
             continue
         try:
-            maps = pidmaps(pid)
+            maps = pidmaps(src, pid)
             seen = {}
             for m in maps:
                 name = maps[m]['name']
@@ -327,9 +328,9 @@ def maptotals(pids):
             continue
     return totals
 
-def showmaps():
+def showmaps(src):
     p = src.pids()
-    pt = maptotals(p)
+    pt = maptotals(src, p)
 
     fields = dict(
         map=('Map', lambda n: n, '%-40.40s', len,
@@ -363,14 +364,14 @@ def showmaps():
 
     showtable(pt.keys(), fields, columns.split(), options.sort or 'pss')
 
-def usertotals(pids):
+def usertotals(src, pids):
     totals = {}
     for pid in pids:
         if (filters(options.processfilter, pid, src.pidname, src.pidcmd) or
                 filters(options.userfilter, pid, pidusername)):
             continue
         try:
-            maps = pidmaps(pid)
+            maps = pidmaps(src, pid)
             if len(maps) == 0:
                 continue
         except EnvironmentError:
@@ -391,9 +392,9 @@ def usertotals(pids):
         totals[user] = t
     return totals
 
-def showusers():
+def showusers(src):
     p = src.pids()
-    pt = usertotals(p)
+    pt = usertotals(src, p)
 
     def showuser(u):
         if options.numeric:
@@ -419,12 +420,12 @@ def showusers():
         )
     columns = options.columns or 'user count swap uss pss rss'
 
-    showtable(pt.keys(), fields, columns.split(), options.sort or 'pss')
+    showtable(src, pt.keys(), fields, columns.split(), options.sort or 'pss')
 
-def showsystem():
-    t = totalmem()
+def showsystem(src):
+    t = totalmem(src)
     ki = kernelsize()
-    m = memory()
+    m = memory(src)
 
     mt = m['memtotal']
     f = m['memfree']
@@ -460,7 +461,7 @@ def showsystem():
               'area not reclaimable'))
 
     columns = options.columns or 'area used cache noncache'
-    showtable(range(len(l)), fields, columns.split(), options.sort or 'order')
+    showtable(src, range(len(l)), fields, columns.split(), options.sort or 'order')
 
 def showfields(fields, f):
     if type(f) in (list, set):
@@ -502,7 +503,7 @@ def autosize(columns, fields, rows):
 
     return colsizes
 
-def showtable(rows, fields, columns, sort):
+def showtable(src, rows, fields, columns, sort):
     header = ""
     format = ""
     formatter = []
@@ -516,8 +517,8 @@ def showtable(rows, fields, columns, sort):
     if options.bar:
         columns.append(options.bar)
 
-    mt = totalmem()
-    st = memory()['swaptotal']
+    mt = totalmem(src)
+    st = memory(src)['swaptotal']
 
     missing = set(columns) - set(fields)
     if len(missing) > 0:
@@ -656,78 +657,82 @@ def showbar(l, columns, sort):
     pylab.legend([p[0] for p in pl], key)
     pylab.show()
 
+def main():
 
-parser = optparse.OptionParser("%prog [options]")
-parser.add_option("-H", "--no-header", action="store_true",
-                  help="disable header line")
-parser.add_option("-c", "--columns", type="str",
-                  help="columns to show")
-parser.add_option("-t", "--totals", action="store_true",
-                  help="show totals")
-parser.add_option("-a", "--autosize", action="store_true",
-                  help="size columns to fit terminal size")
+    parser = optparse.OptionParser("%prog [options]")
+    parser.add_option("-H", "--no-header", action="store_true",
+                      help="disable header line")
+    parser.add_option("-c", "--columns", type="str",
+                      help="columns to show")
+    parser.add_option("-t", "--totals", action="store_true",
+                      help="show totals")
+    parser.add_option("-a", "--autosize", action="store_true",
+                      help="size columns to fit terminal size")
 
-parser.add_option("-R", "--realmem", type="str",
-                  help="amount of physical RAM")
-parser.add_option("-K", "--kernel", type="str",
-                  help="path to kernel image")
+    parser.add_option("-R", "--realmem", type="str",
+                      help="amount of physical RAM")
+    parser.add_option("-K", "--kernel", type="str",
+                      help="path to kernel image")
 
-parser.add_option("-m", "--mappings", action="store_true",
-                  help="show mappings")
-parser.add_option("-u", "--users", action="store_true",
-                  help="show users")
-parser.add_option("-w", "--system", action="store_true",
-                  help="show whole system")
+    parser.add_option("-m", "--mappings", action="store_true",
+                      help="show mappings")
+    parser.add_option("-u", "--users", action="store_true",
+                      help="show users")
+    parser.add_option("-w", "--system", action="store_true",
+                      help="show whole system")
 
-parser.add_option("-P", "--processfilter", type="str",
-                  help="process filter regex")
-parser.add_option("-M", "--mapfilter", type="str",
-                  help="map filter regex")
-parser.add_option("-U", "--userfilter", type="str",
-                  help="user filter regex")
+    parser.add_option("-P", "--processfilter", type="str",
+                      help="process filter regex")
+    parser.add_option("-M", "--mapfilter", type="str",
+                      help="map filter regex")
+    parser.add_option("-U", "--userfilter", type="str",
+                      help="user filter regex")
 
-parser.add_option("-n", "--numeric", action="store_true",
-                  help="numeric output")
-parser.add_option("-s", "--sort", type="str",
-                  help="field to sort on")
-parser.add_option("-r", "--reverse", action="store_true",
-                  help="reverse sort")
+    parser.add_option("-n", "--numeric", action="store_true",
+                      help="numeric output")
+    parser.add_option("-s", "--sort", type="str",
+                      help="field to sort on")
+    parser.add_option("-r", "--reverse", action="store_true",
+                      help="reverse sort")
 
-parser.add_option("-p", "--percent", action="store_true",
-                  help="show percentage")
-parser.add_option("-k", "--abbreviate", action="store_true",
-                  help="show unit suffixes")
+    parser.add_option("-p", "--percent", action="store_true",
+                      help="show percentage")
+    parser.add_option("-k", "--abbreviate", action="store_true",
+                      help="show unit suffixes")
 
-parser.add_option("", "--pie", type='str',
-                  help="show pie graph")
-parser.add_option("", "--bar", type='str',
-                  help="show bar graph")
+    parser.add_option("", "--pie", type='str',
+                      help="show pie graph")
+    parser.add_option("", "--bar", type='str',
+                      help="show bar graph")
 
-parser.add_option("-S", "--source", type="str",
-                  help="/proc data source")
+    parser.add_option("-S", "--source", type="str",
+                      help="/proc data source")
 
+    global options
+    defaults = {}
+    parser.set_defaults(**defaults)
+    (options, args) = parser.parse_args()
 
-defaults = {}
-parser.set_defaults(**defaults)
-(options, args) = parser.parse_args()
+    try:
+        src = tardata(options.source)
+    except:
+        src = procdata(options.source)
 
-try:
-    src = tardata(options.source)
-except:
-    src = procdata(options.source)
-
-try:
-    if options.mappings:
-        showmaps()
-    elif options.users:
-        showusers()
-    elif options.system:
-        showsystem()
-    else:
-        showpids()
-except IOError:
-    _, e, _ = sys.exc_info()
-    if e.errno == errno.EPIPE:
+    try:
+        if options.mappings:
+            showmaps(src)
+        elif options.users:
+            showusers(src)
+        elif options.system:
+            showsystem(src)
+        else:
+            showpids(src)
+    except IOError:
+        _, e, _ = sys.exc_info()
+        if e.errno == errno.EPIPE:
+            pass
+    except KeyboardInterrupt:
         pass
-except KeyboardInterrupt:
-    pass
+
+if __name__ == "__main__":
+    main()

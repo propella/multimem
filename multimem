@@ -1,0 +1,31 @@
+#!/usr/bin/env python
+#
+# multimem - Report Proportional set size of a multi process program
+#
+# Copyright 2017 Takashi Yamamiya <tyamamiya@xevo.com>
+#
+# This software may be used and distributed according to the terms of
+# the GNU General Public License version 2 or later, incorporated
+# herein by reference.
+
+import smem.smem
+import pprint
+
+class Options(object):
+    pass
+
+def main():
+    print("ps:")
+    src = smem.smem.procdata("")
+    pids = src.pids()
+    print(pids)
+    smem.smem.options = Options()
+    smem.smem.options.processfilter = None
+    smem.smem.options.userfilter = None
+    smem.smem.options.mapfilter = None
+    pt = smem.smem.processtotals(src, pids)
+    pprint.pprint(pt)
+    
+
+if __name__ == "__main__":
+    main()
