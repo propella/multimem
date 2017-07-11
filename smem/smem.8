@@ -1,0 +1,214 @@
+.TH SMEM 8 "03/15/2010" "" ""
+
+.SH NAME
+smem \- Report memory usage with shared memory divided proportionally.
+
+.SH SYNOPSIS
+.B smem
+.RI [ options ]
+
+.SH DESCRIPTION
+\fBsmem\fP reports physical memory usage, taking shared memory pages
+into account.  Unshared memory is reported as the USS (Unique Set Size).
+Shared memory is divided evenly among the processes sharing that memory.
+The unshared memory (USS) plus a process's proportion of shared memory
+is reported as the PSS (Proportional Set Size).  The USS and PSS only
+include physical memory usage.  They do not include memory that has been
+swapped out to disk.
+
+Memory can be reported by process, by user, by mapping, or systemwide.
+Both text mode and graphical output are available.
+
+.SH OPTIONS
+
+.SS GENERAL OPTIONS
+
+.TP
+.B \-h, \-\-help
+Show help.
+
+.SS SOURCE DATA
+By default, smem will pull most of the data it needs from the /proc
+filesystem of the system it is running on.  The \-\-source option lets
+you used a tarred set of /proc data saved earlier, possibly on a
+different machine.  The \-\-kernel and \-\-realmem options let you
+specify a couple things that smem cannot discover on its own.
+
+
+.TP
+.BI "\-K " KERNEL ", \-\-kernel=" KERNEL
+Path to an uncompressed kernel image.  This lets smem include the size
+of the kernel's code and statically allocated data in the systemwide
+(\-w) output.  (To obtain an uncompressed image of a kernel on disk, you
+may need to build the kernel yourself, then locate file vmlinux in the
+source tree.)
+
+.TP
+.BI "\-R " REALMEM ", \-\-realmem=" REALMEM
+Amount of physical RAM.  This lets smem detect the amount of memory used
+by firmware/hardware in the systemwide (\-w) output.  If provided, it
+will also be used as the total memory size to base percentages on.
+Example: --realmem=1024M
+
+.TP
+.BI "\-S " SOURCE ", \-\-source=" SOURCE
+/proc data source.  This lets you specify an alternate source of the
+/proc data.  For example, you can capture data from an embedded system
+using smemcap, and parse the data later on a different machine.  If the
+\-\-source option is not included, smem reports memory usage on the
+running system.
+
+.SS REPORT BY
+If none of the following options are included, smem reports memory usage
+by process.
+
+.TP
+.B \-m, \-\-mappings
+Report memory usage by mapping.
+
+.TP
+.B \-u, \-\-users
+Report memory usage by user.
+
+.TP
+.B \-w, \-\-system
+Report systemwide memory usage summary.
+
+.SS FILTER BY
+If none of these options are included, memory usage is reported for all
+processes, users, or mappings.  (Note: If you are running as a non-root
+user, and if you are not using the \-\-source options, then you will
+only see data from processes whose /proc/ information you have access
+to.)
+
+.TP
+.BI "\-M " MAPFILTER ", \-\-mapfilter=" MAPFILTER
+Mapping filter regular expression.
+
+.TP
+.BI "\-P " PROCESSFILTER ", \-\-processfilter=" PROCESSFILTER
+Process filter regular expression.
+
+.TP
+.BI "\-U " USERFILTER ", \-\-userfilter=" USERFILTER
+User filter regular expression.
+
+.SS OUTPUT FORMATTING
+
+.TP
+.B \-a, \-\-autosize
+Size columns to fit terminal size.
+
+.TP
+.BI "\-c " COLUMNS ", \-\-columns=" COLUMNS
+Columns to show.
+
+.TP
+.B \-H, \-\-no\-header
+Disable header line.
+
+.TP
+.B \-k, \-\-abbreviate
+Show unit suffixes.
+
+.TP
+.B \-n, \-\-numeric
+Show numeric user IDs instead of usernames.
+
+.TP
+.B \-p, \-\-percent
+Show percentages.
+
+.TP
+.B \-r, \-\-reverse
+Reverse sort.
+
+.TP
+.BI "\-s " SORT ", \-\-sort=" SORT
+Field to sort on.
+
+.TP
+.B \-t, \-\-totals
+Show totals.
+
+.SS OUTPUT TYPE
+These options specify graphical output styles.
+
+.TP
+.BI "\-\-bar=" BAR
+Show bar graph.
+
+.TP
+.BI "\-\-pie=" PIE
+Show pie graph.
+
+.PP
+
+.SH REQUIREMENTS
+\fBsmem\fP requires:
+
+.IP \(bu 3
+Linux kernel providing 'Pss' metric in /proc/<pid>/smaps (generally
+2.6.27 or newer).
+.IP \(bu
+Python 2.x (at least 2.4 or so).
+.IP \(bu
+The matplotlib library
+(only if you want to generate graphical charts).
+
+.SH EMBEDDED USAGE
+To capture memory statistics on resource\-constrained systems, the
+the \fBsmem\fP source includes a utility named \fBsmemcap\fP.
+\fBsmemcap\fP captures all /proc entries required by \fBsmem\fP
+and outputs them as an uncompressed .tar file to STDOUT.
+\fBsmem\fP can analyze the output using the \fB\-\-source\fP option.
+\fBsmemcap\fP is small and does not require Python.
+.PP
+To use \fBsmemcap\fP:
+.IP 1. 3
+Obtain the smem source at http://selenic.com/repo/smem
+.IP 2.
+Compile \fIsmemcap.c\fP for your target system.
+.IP 3.
+Run \fBsmemcap\fP on the target system and save the output:
+.br
+smemcap > memorycapture.tar
+.IP 4.
+Copy the output to another machine and run smem on it:
+.br
+smem -S memorycapture.tar
+
+.SH FILES
+.I /proc/$pid/cmdline
+.PP
+.I /proc/$pid/smaps
+.PP
+.I /proc/$pid/stat
+.PP
+.I /proc/meminfo
+.PP
+.I /proc/version
+
+.SH RESOURCES
+Main Web Site: http://www.selenic.com/smem
+
+Source code repository: http://selenic.com/repo/smem
+
+Mailing list: http://selenic.com/mailman/listinfo/smem
+
+.SH "SEE ALSO"
+.BR free (1),
+.BR pmap (1),
+.BR proc (5),
+.BR ps (1),
+.BR top (1),
+.BR vmstat (8)
+
+.SH COPYING
+Copyright (C) 2008-2009 Matt Mackall.  Free use of this software
+is granted under the terms of the GNU General Public License
+version 2 or later.
+
+.SH AUTHOR
+\fBsmem\fP was written by Matt Mackall.
+
