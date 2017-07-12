@@ -8,23 +8,35 @@
 # the GNU General Public License version 2 or later, incorporated
 # herein by reference.
 
-import re, os, sys, pwd, optparse, errno, tarfile
+import re
+import os
+import sys
+import pwd
+import optparse
+import errno
+import tarfile
 
 warned = False
 options = {}
 
+
 class procdata(object):
+
     def __init__(self, source):
         self._ucache = {}
         self._gcache = {}
         self.source = source and source or ""
         self._memdata = None
+
     def _list(self):
         return os.listdir(self.source + "/proc")
+
     def _read(self, f):
         return open(self.source + '/proc/' + f).read()
+
     def _readlines(self, f):
         return self._read(f).splitlines(True)
+
     def _stat(self, f):
         return os.stat(self.source + "/proc/" + f)
 
@@ -32,38 +44,47 @@ class procdata(object):
         '''get a list of processes'''
         return [int(e) for e in self._list()
                 if e.isdigit() and not iskernel(self, e)]
+
     def mapdata(self, pid):
         return self._readlines('%s/smaps' % pid)
+
     def status(self, pid):
         return self._readlines('%s/status' % pid)
+
     def memdata(self):
         if self._memdata is None:
             self._memdata = self._readlines('meminfo')
         return self._memdata
+
     def version(self):
         return self._readlines('version')[0]
+
     def pidname(self, pid):
         try:
             l = self._read('%d/stat' % pid)
             return l[l.find('(') + 1: l.find(')')]
         except:
             return '?'
+
     def pidcmd(self, pid):
         try:
             c = self._read('%s/cmdline' % pid)[:-1]
             return c.replace('\0', ' ')
         except:
             return '?'
+
     def piduser(self, pid):
         try:
             return self._stat('%d' % pid).st_uid
         except:
             return -1
+
     def pidgroup(self, pid):
         try:
             return self._stat('%d' % pid).st_gid
         except:
             return -1
+
     def username(self, uid):
         if uid == -1:
             return '?'
@@ -73,6 +94,7 @@ class procdata(object):
             except KeyError:
                 self._ucache[uid] = str(uid)
         return self._ucache[uid]
+
     def groupname(self, gid):
         if gid == -1:
             return '?'
@@ -83,35 +105,46 @@ class procdata(object):
                 self._gcache[gid] = str(gid)
         return self._gcache[gid]
 
+
 class tardata(procdata):
+
     def __init__(self, source):
         procdata.__init__(self, source)
         self.tar = tarfile.open(source)
+
     def _list(self):
         for ti in self.tar:
             if ti.name.endswith('/smaps'):
-                d,f = ti.name.split('/')
+                d, f = ti.name.split('/')
                 yield d
+
     def _read(self, f):
         return self.tar.extractfile(f).read()
+
     def _readlines(self, f):
         return self.tar.extractfile(f).readlines()
+
     def piduser(self, p):
         t = self.tar.getmember("%d" % p)
         if t.uname:
             self._ucache[t.uid] = t.uname
         return t.uid
+
     def pidgroup(self, p):
         t = self.tar.getmember("%d" % p)
         if t.gname:
             self._gcache[t.gid] = t.gname
         return t.gid
+
     def username(self, u):
         return self._ucache.get(u, str(u))
+
     def groupname(self, g):
         return self._gcache.get(g, str(g))
 
 _totalmem = 0
+
+
 def totalmem(src):
     global _totalmem
     if not _totalmem:
@@ -122,6 +155,8 @@ def totalmem(src):
     return _totalmem
 
 _kernelsize = 0
+
+
 def kernelsize():
     global _kernelsize
     if not _kernelsize and options.kernel:
@@ -135,11 +170,13 @@ def kernelsize():
                 pos = packedkernel.find('\x1F\x8B')
                 if pos >= 0 and pos < 25000:
                     sys.stderr.write("Maybe uncompressed kernel can be extracted by the command:\n"
-                            "  dd if=%s bs=1 skip=%d | gzip -d >%s.unpacked\n\n" % (options.kernel, pos, options.kernel))
+                                     "  dd if=%s bs=1 skip=%d | gzip -d >%s.unpacked\n\n" % (options.kernel, pos, options.kernel))
             except:
                 pass
-            sys.stderr.write("Parameter '%s' should be an original uncompressed compiled kernel file.\n\n" % options.kernel)
+            sys.stderr.write(
+                "Parameter '%s' should be an original uncompressed compiled kernel file.\n\n" % options.kernel)
     return _kernelsize
+
 
 def pidmaps(src, pid):
     global warned
@@ -154,7 +191,7 @@ def pidmaps(src, pid):
             if f[0].startswith('Pss'):
                 seen = True
             maps[start][f[0][:-1].lower()] = int(f[1])
-        elif '-' in f[0] and ':' not in f[0]: # looks like a mapping range
+        elif '-' in f[0] and ':' not in f[0]:  # looks like a mapping range
             start, end = f[0].split('-')
             start = int(start, 16)
             name = "<anonymous>"
@@ -165,7 +202,8 @@ def pidmaps(src, pid):
                                device=f[3], inode=f[4], name=name)
 
     if not empty and not seen and not warned:
-        sys.stderr.write('warning: kernel does not appear to support PSS measurement\n')
+        sys.stderr.write(
+            'warning: kernel does not appear to support PSS measurement\n')
         warned = True
         if not options.sort:
             options.sort = 'rss'
@@ -179,15 +217,18 @@ def pidmaps(src, pid):
 
     return maps
 
+
 def sortmaps(totals, key):
     l = []
     for pid in totals:
         l.append((totals[pid][key], pid))
     l.sort()
-    return [pid for pid,key in l]
+    return [pid for pid, key in l]
+
 
 def iskernel(src, pid):
     return src.pidcmd(pid) == ""
+
 
 def memory(src):
     t = {}
@@ -197,6 +238,7 @@ def memory(src):
         if m:
             t[m.group(1).lower()] = int(m.group(2))
     return t
+
 
 def units(x):
     s = ''
@@ -208,18 +250,22 @@ def units(x):
         x /= 1024.0
     return "%.1f%s" % (x, s)
 
+
 def fromunits(x):
     s = dict(k=2**10, K=2**10, kB=2**10, KB=2**10,
              M=2**20, MB=2**20, G=2**30, GB=2**30,
              T=2**40, TB=2**40)
-    for k,v in s.items():
+    for k, v in s.items():
         if x.endswith(k):
-            return int(float(x[:-len(k)])*v)
-    sys.stderr.write("Memory size should be written with units, for example 1024M\n")
+            return int(float(x[:-len(k)]) * v)
+    sys.stderr.write(
+        "Memory size should be written with units, for example 1024M\n")
     sys.exit(-1)
+
 
 def pidusername(src, pid):
     return src.username(src.piduser(pid))
+
 
 def showamount(a, total):
     if options.abbreviate:
@@ -230,6 +276,7 @@ def showamount(a, total):
         return "%.2f%%" % (100.0 * a / total)
     return a
 
+
 def filters(opt, arg, *sources):
     if not opt:
         return False
@@ -238,6 +285,7 @@ def filters(opt, arg, *sources):
         if re.search(opt, f(arg)):
             return False
     return True
+
 
 def pidtotals(src, pid):
     maps = pidmaps(src, pid)
@@ -252,6 +300,7 @@ def pidtotals(src, pid):
 
     return t
 
+
 def processtotals(src, pids):
     totals = {}
     for pid in pids:
@@ -265,6 +314,7 @@ def processtotals(src, pids):
         except IOError:
             continue
     return totals
+
 
 def showpids(src):
     p = src.pids()
@@ -284,9 +334,9 @@ def showpids(src):
               'name of process'),
         command=('Command', src.pidcmd, '%-27.27s', None,
                  'process command line'),
-        maps=('Maps',lambda n: pt[n]['maps'], '% 5s', sum,
+        maps=('Maps', lambda n: pt[n]['maps'], '% 5s', sum,
               'total number of mappings'),
-        swap=('Swap',lambda n: pt[n]['swap'], '% 8a', sum,
+        swap=('Swap', lambda n: pt[n]['swap'], '% 8a', sum,
               'amount of swap space consumed (ignoring sharing)'),
         uss=('USS', lambda n: pt[n]['uss'], '% 8a', sum,
              'unique set size'),
@@ -296,10 +346,11 @@ def showpids(src):
              'proportional set size (including sharing)'),
         vss=('VSS', lambda n: pt[n]['size'], '% 8a', sum,
              'virtual set size (total virtual memory mapped)'),
-        )
+    )
     columns = options.columns or 'pid user command swap uss pss rss'
 
     showtable(src, pt.keys(), fields, columns.split(), options.sort or 'pss')
+
 
 def maptotals(src, pids):
     totals = {}
@@ -330,6 +381,7 @@ def maptotals(src, pids):
             continue
     return totals
 
+
 def showmaps(src):
     p = src.pids()
     pt = maptotals(src, p)
@@ -341,7 +393,7 @@ def showmaps(src):
                'number of mappings found'),
         pids=('PIDs', lambda n: pt[n]['pids'], '% 5s', sum,
               'number of PIDs using mapping'),
-        swap=('Swap',lambda n: pt[n]['swap'], '% 8a', sum,
+        swap=('Swap', lambda n: pt[n]['swap'], '% 8a', sum,
               'amount of swap space consumed (ignoring sharing)'),
         uss=('USS', lambda n: pt[n]['private_clean']
              + pt[n]['private_dirty'], '% 8a', sum,
@@ -352,19 +404,20 @@ def showmaps(src):
              'proportional set size (including sharing)'),
         vss=('VSS', lambda n: pt[n]['size'], '% 8a', sum,
              'virtual set size (total virtual address space mapped)'),
-        avgpss=('AVGPSS', lambda n: int(1.0 * pt[n]['pss']/pt[n]['pids']),
+        avgpss=('AVGPSS', lambda n: int(1.0 * pt[n]['pss'] / pt[n]['pids']),
                 '% 8a', sum,
                 'average PSS per PID'),
-        avguss=('AVGUSS', lambda n: int(1.0 * pt[n]['uss']/pt[n]['pids']),
+        avguss=('AVGUSS', lambda n: int(1.0 * pt[n]['uss'] / pt[n]['pids']),
                 '% 8a', sum,
                 'average USS per PID'),
-        avgrss=('AVGRSS', lambda n: int(1.0 * pt[n]['rss']/pt[n]['pids']),
+        avgrss=('AVGRSS', lambda n: int(1.0 * pt[n]['rss'] / pt[n]['pids']),
                 '% 8a', sum,
                 'average RSS per PID'),
-        )
+    )
     columns = options.columns or 'map pids avgpss pss'
 
     showtable(pt.keys(), fields, columns.split(), options.sort or 'pss')
+
 
 def usertotals(src, pids):
     totals = {}
@@ -394,6 +447,7 @@ def usertotals(src, pids):
         totals[user] = t
     return totals
 
+
 def showusers(src):
     p = src.pids()
     pt = usertotals(src, p)
@@ -408,7 +462,7 @@ def showusers(src):
               'user name or ID'),
         count=('Count', lambda n: pt[n]['count'], '% 5s', sum,
                'number of processes'),
-        swap=('Swap',lambda n: pt[n]['swap'], '% 8a', sum,
+        swap=('Swap', lambda n: pt[n]['swap'], '% 8a', sum,
               'amount of swapspace consumed (ignoring sharing)'),
         uss=('USS', lambda n: pt[n]['private_clean']
              + pt[n]['private_dirty'], '% 8a', sum,
@@ -419,10 +473,11 @@ def showusers(src):
              'proportional set size (including sharing)'),
         vss=('VSS', lambda n: pt[n]['pss'], '% 8a', sum,
              'virtual set size (total virtual memory mapped)'),
-        )
+    )
     columns = options.columns or 'user count swap uss pss rss'
 
     showtable(src, pt.keys(), fields, columns.split(), options.sort or 'pss')
+
 
 def showsystem(src):
     t = totalmem(src)
@@ -452,18 +507,20 @@ def showsystem(src):
 
     fields = dict(
         order=('Order', lambda n: n, '% 1s', lambda x: '',
-             'hierarchical order'),
+               'hierarchical order'),
         area=('Area', lambda n: l[n][0], '%-24s', lambda x: '',
-             'memory area'),
+              'memory area'),
         used=('Used', lambda n: l[n][1], '%10a', sum,
               'area in use'),
         cache=('Cache', lambda n: l[n][2], '%10a', sum,
-              'area used as reclaimable cache'),
+               'area used as reclaimable cache'),
         noncache=('Noncache', lambda n: l[n][1] - l[n][2], '%10a', sum,
-              'area not reclaimable'))
+                  'area not reclaimable'))
 
     columns = options.columns or 'area used cache noncache'
-    showtable(src, range(len(l)), fields, columns.split(), options.sort or 'order')
+    showtable(src, range(len(l)), fields,
+              columns.split(), options.sort or 'order')
+
 
 def showfields(fields, f):
     if type(f) in (list, set):
@@ -473,6 +530,7 @@ def showfields(fields, f):
     print("known fields:")
     for l in sorted(fields):
         print("%-8s %s" % (l, fields[l][-1]))
+
 
 def autosize(columns, fields, rows):
     colsizes = {}
@@ -504,6 +562,7 @@ def autosize(columns, fields, rows):
         colsizes[overflowcol] = min(colsizes[overflowcol], maxflowcol)
 
     return colsizes
+
 
 def showtable(src, rows, fields, columns, sort):
     header = ""
@@ -564,8 +623,8 @@ def showtable(src, rows, fields, columns, sort):
     if not options.no_header:
         print(header)
 
-    for k,r in l:
-        print(format % tuple([f(v) for f,v in zip(formatter, r)]))
+    for k, r in l:
+        print(format % tuple([f(v) for f, v in zip(formatter, r)]))
 
     if options.totals:
         # totals
@@ -578,7 +637,8 @@ def showtable(src, rows, fields, columns, sort):
                 t.append("")
 
         print("-" * len(header))
-        print(format % tuple([f(v) for f,v in zip(formatter, t)]))
+        print(format % tuple([f(v) for f, v in zip(formatter, t)]))
+
 
 def showpie(l, sort):
     try:
@@ -591,7 +651,7 @@ def showpie(l, sort):
         l.reverse()
 
     labels = [r[1][-1] for r in l]
-    values = [r[0] for r in l] # sort field
+    values = [r[0] for r in l]  # sort field
 
     tm = totalmem()
     s = sum(values)
@@ -612,16 +672,18 @@ def showpie(l, sort):
         labels.insert(0, 'unused')
         explode.insert(0, .05)
 
-    pylab.figure(1, figsize=(6,6))
+    pylab.figure(1, figsize=(6, 6))
     ax = pylab.axes([0.1, 0.1, 0.8, 0.8])
-    pylab.pie(values, explode = explode, labels=labels,
+    pylab.pie(values, explode=explode, labels=labels,
               autopct="%.2f%%", shadow=True)
     pylab.title('%s by %s' % (options.pie, sort))
     pylab.show()
 
+
 def showbar(l, columns, sort):
     try:
-        import pylab, numpy
+        import pylab
+        import numpy
     except ImportError:
         sys.stderr.write("bar chart requires matplotlib\n")
         sys.exit(-1)
@@ -651,17 +713,19 @@ def showbar(l, columns, sort):
     ind = numpy.arange(len(l))
     for n in xrange(len(rc)):
         pl.append(pylab.bar(ind + offset + width * n,
-                             [x[1][rc[n]] for x in l], width, color=gc(n)))
+                            [x[1][rc[n]] for x in l], width, color=gc(n)))
 
-    #plt.xticks(ind + .5, )
+    # plt.xticks(ind + .5, )
     pylab.gca().set_xticks(ind + .5)
     pylab.gca().set_xticklabels([x[1][-1] for x in l], rotation=45)
     pylab.legend([p[0] for p in pl], key)
     pylab.show()
 
+
 class Options(object):
     pass
-    
+
+
 def set_options(new_options):
     """Update options when it is called as a library."""
 
@@ -680,7 +744,8 @@ def set_options(new_options):
     options.percent = None
     options.totals = None
     options.__dict__.update(new_options)
-    
+
+
 def main():
 
     parser = optparse.OptionParser("%prog [options]")
