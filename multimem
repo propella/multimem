@@ -2,6 +2,8 @@
 #
 # multimem - Report Proportional set size of a multi process program
 #
+# Usage: multimem (pid)
+#
 # Copyright 2017 Takashi Yamamiya <tyamamiya@xevo.com>
 #
 # This software may be used and distributed according to the terms of
@@ -9,7 +11,7 @@
 # herein by reference.
 
 import smem.smem
-import pprint
+# import pprint
 from collections import defaultdict
 import sys
 
@@ -30,6 +32,7 @@ def get_pid_to_ppid(proc):
 
 
 def get_ppid_to_pids(proc):
+    """Return map from parent pid to the child pids like {0: [1], 1: [2,3,4,5], ...}"""
     ppid_to_pids = defaultdict(list)
     for pid, parent in get_pid_to_ppid(proc).iteritems():
         ppid_to_pids[parent].append(pid)
@@ -37,67 +40,83 @@ def get_ppid_to_pids(proc):
     return ppid_to_pids
 
 
-def get_subpids(ppid_to_pids, pid):
-    """Return a list of the pid and all the descendants"""
-    subpids = [pid]
-    for child in ppid_to_pids[pid]:
-        subpids.extend(get_subpids(ppid_to_pids, child))
-    return subpids
+def show_tree_line(name, swap, uss, pss, rss):
+    print("%-40s %8s %8s %8s %8s" % (name, swap, uss, pss, rss))
 
 
-def multimem(proc, pid):
+def show_tree_rest(proc, tree, indent):
+    indent_str = "  " * indent
+    name = "%s(%s) %s" % (indent_str, tree[0], proc.pidname(tree[0]))
+    if tree[1]:
+        show_tree_line(name, tree[1]["swap"], tree[
+                       1]["uss"], tree[1]["pss"], tree[1]["rss"])
+    else:
+        show_tree_line(name, "?", "?", "?", "?")
+    for child in tree[2]:
+        show_tree_rest(proc, child, indent + 1)
+
+
+def show_tree_total(tree):
+    (total, accurate) = get_total(tree)
+    if accurate:
+        format = "%s"
+    else:
+        format = "?%s"
+    show_tree_line("Total", format % total["swap"],
+                   format % total["uss"], format % total["pss"], format % total["rss"])
+
+
+def show_line():
+    print("-" * (40 + 8 + 8 + 8 + 8 + 4))
+
+
+def show_tree(proc, tree):
+    show_tree_line("(PID) Name", "SWAP", "USS", "PSS", "RSS")
+    show_line()
+    show_tree_rest(proc, tree, 0)
+    show_line()
+    show_tree_total(tree)
+
+
+def get_statistics_tree(proc, ppid_to_pids, pid):
+    """Return A tree of (pid, statistics, children)"""
+    children = [get_statistics_tree(proc, ppid_to_pids, child)
+                for child in ppid_to_pids[pid]]
+    try:
+        statistics = smem.smem.pidtotals(proc, pid)
+    except IOError:
+        statistics = None
+    return (pid, statistics, children)
+
+
+def get_total(tree):
+    """Retutn (total, accurate) where total is the sum of all field in the tree, accurate is True if all item has statistics"""
+    total = tree[1] or {}
+    accurate = total != {}
+    for each in tree[2]:
+        (subtotal, acc) = get_total(each)
+        if not acc:
+            accurate = False
+        if subtotal:
+            for key, value in subtotal.iteritems():
+                total[key] = value + total.get(key, 0)
+    return (total, accurate)
+
+
+def show_statistics_tree(proc, pid):
     ppid_to_pids = get_ppid_to_pids(proc)
-    subpids = get_subpids(ppid_to_pids, pid)
-
-    pids = proc.pids()
-    smem.smem.set_options({"processfilter": "emacs"})
-
-    alltotals = {}
-    for pid in subpids:
-        totals = smem.smem.pidtotals(proc, pid)
-        for key, value in totals.iteritems():
-            alltotals[key] = value + alltotals.get(key, 0)
-    # pprint.pprint(alltotals)
-    return alltotals
-
-
-def show_multimem(proc, pid):
-    alltotals = multimem(proc, pid)
-    pt = {pid: alltotals}
-    fields = dict(
-        pid=('PID', lambda n: n, '% 5s', lambda x: len(pt),
-             'process ID'),
-        #        user=('User', showuser, '%-8s', lambda x: len(dict.fromkeys(x)),
-        #              'owner of process'),
-        name=('Name', proc.pidname, '%-24.24s', None,
-              'name of process'),
-        command=('Command', proc.pidcmd, '%-27.27s', None,
-                 'process command line'),
-        maps=('Maps', lambda n: pt[n]['maps'], '% 5s', sum,
-              'total number of mappings'),
-        swap=('Swap', lambda n: pt[n]['swap'], '% 8a', sum,
-              'amount of swap space consumed (ignoring sharing)'),
-        uss=('USS', lambda n: pt[n]['uss'], '% 8a', sum,
-             'unique set size'),
-        rss=('RSS', lambda n: pt[n]['rss'], '% 8a', sum,
-             'resident set size (ignoring sharing)'),
-        pss=('PSS', lambda n: pt[n]['pss'], '% 8a', sum,
-             'proportional set size (including sharing)'),
-        vss=('VSS', lambda n: pt[n]['size'], '% 8a', sum,
-             'virtual set size (total virtual memory mapped)'),
-    )
-    columns = 'pid command swap uss pss rss'
-
-    smem.smem.showtable(proc, [pid], fields, columns.split(), 'pss')
+    tree = get_statistics_tree(proc, ppid_to_pids, pid)
+    show_tree(proc, tree)
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: multimem pid")
-        sys.exit(1)
-    pid = int(sys.argv[1])
+    if len(sys.argv) < 2:
+        pid = 1
+    else:
+        pid = int(sys.argv[1])
+    smem.smem.set_options(None)
     proc = smem.smem.procdata("")
-    show_multimem(proc, pid)
+    show_statistics_tree(proc, pid)
 
 if __name__ == "__main__":
     main()

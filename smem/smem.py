@@ -743,7 +743,8 @@ def set_options(new_options):
     options.abbreviate = None
     options.percent = None
     options.totals = None
-    options.__dict__.update(new_options)
+    if (new_options):
+        options.__dict__.update(new_options)
 
 
 def main():
