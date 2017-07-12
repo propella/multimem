@@ -1,7 +1,7 @@
 multimem
 ========
 
-Report Proportional set size (PSS) of a multi process program
+Report memory usage including Proportional set size (PSS) for a multi process program
 
 Usage
 -----
@@ -35,6 +35,19 @@ I'm pretty sure there should be a similar tool to measure memory size (including
 If you specify pid, it shows the process tree and the memory usage for each. If you cannot access the memory map, the size is shown as "?".
 
 Total size is shown on the bottom. But if you cannot access any child process, "?" is shown before the size because the total number is inaccurate.
+
+Options
+-------
+
+--brief: shows only PSS. Useful to keep watching.
+
+```
+$ while ./multimem $(pidof -s emacs) --brief; do sleep 2; done
+51882
+51881
+51882
+...
+```
 
 References
 ----------

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #
-# multimem - Report Proportional set size of a multi process program
+# multimem - Report memory usage including Proportional set size (PSS) for a multi process program
 #
-# Usage: multimem (pid)
+# Usage: multimem [pid]
 #
 # Copyright 2017 Takashi Yamamiya <tyamamiya@xevo.com>
 #
@@ -10,10 +10,10 @@
 # the GNU General Public License version 2 or later, incorporated
 # herein by reference.
 
+import argparse
 import smem.smem
 # import pprint
 from collections import defaultdict
-import sys
 
 
 def get_pid_to_ppid(proc):
@@ -109,14 +109,33 @@ def show_statistics_tree(proc, pid):
     show_tree(proc, tree)
 
 
-def main():
-    if len(sys.argv) < 2:
-        pid = 1
+def show_pss_only(proc, pid):
+    ppid_to_pids = get_ppid_to_pids(proc)
+    tree = get_statistics_tree(proc, ppid_to_pids, pid)
+    (total, accurate) = get_total(tree)
+    if accurate:
+        format = "%s"
     else:
-        pid = int(sys.argv[1])
+        format = "?%s"
+    print(format % total["pss"])
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Report memory usage including Proportional set size (PSS) for a multi process program.")
+    parser.add_argument("pid", type=int, nargs="?",
+                        default=1, help="Process ID to be measured")
+    parser.add_argument(
+        "-b", "--brief", action="store_true", help="Show only total PSS")
+    options = parser.parse_args()
+    pid = options.pid
+
     smem.smem.set_options(None)
     proc = smem.smem.procdata("")
-    show_statistics_tree(proc, pid)
+    if options.brief:
+        show_pss_only(proc, pid)
+    else:
+        show_statistics_tree(proc, pid)
 
 if __name__ == "__main__":
     main()
