@@ -1,7 +1,7 @@
 multimem
 ========
 
-Report memory usage including Proportional set size (PSS) for a multi process program
+Report memory usage including Proportional set size (PSS) for a multi process program on Linux
 
 Usage
 -----
