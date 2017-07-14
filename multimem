@@ -2,7 +2,7 @@
 #
 # multimem - Report memory usage including Proportional set size (PSS) for a multi process program on Linux
 #
-# Usage: multimem [pid]
+# Usage: multimem [--brief] [pid]
 #
 # Copyright 2017 Takashi Yamamiya <tyamamiya@xevo.com>
 #
@@ -10,10 +10,10 @@
 # the GNU General Public License version 2 or later, incorporated
 # herein by reference.
 
-import argparse
 import smem.smem
 # import pprint
 from collections import defaultdict
+import sys
 
 
 def get_pid_to_ppid(proc):
@@ -120,19 +120,36 @@ def show_pss_only(proc, pid):
     print(format % total["pss"])
 
 
+def usage():
+    print("Usage: multimem [--brief] [pid]")
+    print("--brief options show only PSS")
+    exit(1)
+
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Report memory usage including Proportional set size (PSS) for a multi process program on Linux.")
-    parser.add_argument("pid", type=int, nargs="?",
-                        default=1, help="Process ID to be measured")
-    parser.add_argument(
-        "-b", "--brief", action="store_true", help="show only total PSS")
-    options = parser.parse_args()
-    pid = options.pid
+    # Parse the arguments manually to reduce external dependency
+    options_brief = False
+    options_positional = []
+    for arg in sys.argv[1:]:
+        if arg.startswith("-"):
+            if arg == "-b" or arg == "--brief":
+                options_brief = True
+            else:
+                print("Unknown argument: %s" % arg)
+                usage()
+        else:
+            options_positional.append(arg)
+
+    if len(options_positional) == 0:
+        pid = 1
+    elif len(options_positional) == 1:
+        pid = int(options_positional[0])
+    else:
+        usage()
 
     smem.smem.set_options(None)
     proc = smem.smem.procdata("")
-    if options.brief:
+    if options_brief:
         show_pss_only(proc, pid)
     else:
         show_statistics_tree(proc, pid)
