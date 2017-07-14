@@ -20,7 +20,11 @@ def get_pid_to_ppid(proc):
     pid_to_ppid = {}
     pids = proc.pids()
     for pid in pids:
-        status = proc.status(pid)
+        try:
+            status = proc.status(pid)
+        except IOError:
+            "Maybe when pid does not exist anymore"
+            continue
         parent = ''
         for line in status:
             field = line.split()
